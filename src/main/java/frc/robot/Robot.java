@@ -32,13 +32,14 @@ public class Robot extends TimedRobot {
   private static final String kCustomAuto1 = "Custom Auto 1";
   private static final String kCustomAuto2 = "Custom Auto 2";
   private static final String kCustomAuto3 = "Custom Auto 3";
+  private static final String kCustomAuto4 = "Custom Auto 4";
 
   private String m_autoSelected;
   private final SendableChooser<String> m_chooser = new SendableChooser<>();
 
 
   //creates SPARK MAX motor controller devices
-  private DifferentialDrive m_Drive;
+  
   private static final int LFrontDeviceID = 2; 
   private static final int LBackDeviceID = 3;
   private static final int RFrontDeviceID =4;
@@ -47,6 +48,12 @@ public class Robot extends TimedRobot {
   private CANSparkMax m_LBackMotor;
   private CANSparkMax m_RFrontMotor;
   private CANSparkMax m_RBackMotor;
+
+  //create motor controller groups
+  MotorControllerGroup mg_leftGroup = new MotorControllerGroup(m_LFrontMotor, m_LBackMotor);
+  MotorControllerGroup mg_rightGroup = new MotorControllerGroup(m_RFrontMotor, m_RBackMotor);
+
+  DifferentialDrive m_Drive = new DifferentialDrive(mg_leftGroup, mg_rightGroup);
   //controllers
   XboxController c_xbox1 = new XboxController(0);
   XboxController c_xbox2 = new XboxController(1);
@@ -83,10 +90,10 @@ public class Robot extends TimedRobot {
 
    //PHOTONVISION INIT 
        //TODO Constants such as camera and target height stored. Change per robot and goal!
-       final double CAMERA_HEIGHT_METERS = Units.inchesToMeters(24);
-       final double TARGET_HEIGHT_METERS = Units.feetToMeters(5);
+       final double CAMERA_HEIGHT_METERS = Units.inchesToMeters(23.622); //done
+       final double TARGET_HEIGHT_METERS = Units.feetToMeters(5); //TODO this one
        // Angle between horizontal and the camera.
-       final double CAMERA_PITCH_RADIANS = Units.degreesToRadians(0);
+       final double CAMERA_PITCH_RADIANS = Units.degreesToRadians(0); //90? //done
    
        // How far from the target we want to be
        final double GOAL_RANGE_METERS = Units.feetToMeters(3);
@@ -105,11 +112,13 @@ public class Robot extends TimedRobot {
 
 
   @Override
-  public void robotInit() {
-  m_chooser.setDefaultOption("Default Auto", kDefaultAuto);
+  public void robotInit() { 
+    //theres probably gonna be a lot of auto things
+    m_chooser.setDefaultOption("Default Auto", kDefaultAuto);
     m_chooser.addOption("Auto 1", kCustomAuto1);
     m_chooser.addOption("Auto 2", kCustomAuto2);
     m_chooser.addOption("Auto 3", kCustomAuto3);
+    m_chooser.addOption("Auto 4", kCustomAuto4);
     SmartDashboard.putData("Auto choices", m_chooser);
 
   //SPARK MAX controllers are intialized over CAN by constructing a CANSparkMax object
@@ -118,30 +127,9 @@ public class Robot extends TimedRobot {
     m_LBackMotor = new CANSparkMax(LBackDeviceID, MotorType.kBrushless);
     m_RFrontMotor = new CANSparkMax(RFrontDeviceID, MotorType.kBrushless);
     m_RBackMotor = new CANSparkMax(RBackDeviceID, MotorType.kBrushless);
-  
-
-    m_LFrontMotor.restoreFactoryDefaults();
-    m_LBackMotor.restoreFactoryDefaults();
-    m_RFrontMotor.restoreFactoryDefaults();
-    m_RBackMotor.restoreFactoryDefaults();
-    //set right side inverted
-    m_RFrontMotor.setInverted(true);
-    m_RBackMotor.setInverted(true);
-    //set the motors to brake on idle.
-    m_LFrontMotor.setIdleMode(IdleMode.kBrake);
-    m_LBackMotor.setIdleMode(IdleMode.kBrake);
-    m_RFrontMotor.setIdleMode(IdleMode.kBrake);
-    m_RBackMotor.setIdleMode(IdleMode.kBrake);
-    // Run after all parameters are set in RobotInit()
-    m_LFrontMotor.burnFlash();
-    m_LBackMotor.burnFlash();
-    m_RFrontMotor.burnFlash();
-    m_RBackMotor.burnFlash();
-    //create motor controller groups
-    MotorControllerGroup mg_leftGroup = new MotorControllerGroup(m_LFrontMotor, m_LBackMotor);
-    MotorControllerGroup mg_rightGroup = new MotorControllerGroup(m_RFrontMotor, m_RBackMotor);
-
-    m_Drive = new DifferentialDrive(mg_leftGroup, mg_rightGroup);
+    
+    
+    //get encoders
     m_LFrontMotor.getEncoder();
     m_LBackMotor.getEncoder();
     m_RFrontMotor.getEncoder();
@@ -154,22 +142,28 @@ public class Robot extends TimedRobot {
   }@Override
   public void autonomousInit() {
     m_autoSelected = m_chooser.getSelected();
-    // m_autoSelected = SmartDashboard.getString("Auto Selector", kDefaultAuto);
-    System.out.println("Auto selected: " + m_autoSelected);
+    switch (m_autoSelected) {
+      case kDefaultAuto:
+      default:
+      //auto auto
+      break;
+      case kCustomAuto1:
+      // auto 
+      break;
+      case kCustomAuto2:
+      // auto 
+      break;
+      case kCustomAuto3:
+      //auto
+      break;
+      case kCustomAuto4:
+      // auto
+      break;
+      }
   }
 
   @Override
   public void teleopPeriodic() {
-
-
-    if (Math.abs(straight) < 0.1) {
-      straight = 0;
-    {
-  
-    if (Math.abs(turn) < 0.1) {                                                    
-      turn = 0;
-    }
-  
     turn =  c_xbox1.getRawAxis(3) - c_xbox1.getRawAxis(2);
     straight = -c_xbox1.getLeftY();
 
@@ -195,17 +189,17 @@ public class Robot extends TimedRobot {
       // Vision-alignment mode
 
       // Query the latest result from PhotonVision
-      var result = camera.getLatestResult();
-      System.out.println("Finding Targets");
-      if (result.hasTargets()) {
-        System.out.println("Targets Found");
+      var RRresult = camera.getLatestResult();
+      System.out.println("Finding RR Target");
+      if (RRresult.hasTargets()) {
+        System.out.println("RR Target Found");
           // First calculate range
           double range =
                   PhotonUtils.calculateDistanceToTargetMeters(
                           CAMERA_HEIGHT_METERS,
                           TARGET_HEIGHT_METERS,
                           CAMERA_PITCH_RADIANS,
-                          Units.degreesToRadians(result.getBestTarget().getPitch()));
+                          Units.degreesToRadians(RRresult.getBestTarget().getPitch()));
 
           // Use this range as the measurement we give to the PID controller.
           // -1.0 required to ensure positive PID controller effort _increases_ range
@@ -213,41 +207,62 @@ public class Robot extends TimedRobot {
 
           // Also calculate angular power
           // -1.0 required to ensure positive PID controller effort _increases_ yaw
-          rotationSpeed = -turnController.calculate(result.getBestTarget().getYaw(), 0);
+          rotationSpeed = -turnController.calculate(RRresult.getBestTarget().getYaw(), 0);
       } else {
           // If we have no targets, stay still.
-          System.out.println("Could Not Find Target");
-    
+          System.out.println("Could Not Find RR Target");
           forwardSpeed = 0;
           rotationSpeed = 0;
           camera.setLED(VisionLEDMode.kOff);
+          //AprilTag Vision Mode
+          camera.setLED(VisionLEDMode.kBlink);
+        try {
+          wait(100);
+        } catch (InterruptedException e) {
+          // TODO Auto-generated catch block
+          e.printStackTrace();
+        }
+        camera.setLED(VisionLEDMode.kOff);
+        try {
+          wait(500);
+        } catch (InterruptedException e) {
+          // TODO Auto-generated catch block
+          e.printStackTrace();
+        }
+      // Vision-alignment mode
+      // Query the latest result from PhotonVision
+      var ATresult = camera.getLatestResult();
+      System.out.println("Finding AT Target");
+      if (RRresult.hasTargets()) {
+        System.out.println("AT Target Found");
+          // First calculate range
+          double range =
+                  PhotonUtils.calculateDistanceToTargetMeters(
+                          CAMERA_HEIGHT_METERS,
+                          TARGET_HEIGHT_METERS,
+                          CAMERA_PITCH_RADIANS,
+                          Units.degreesToRadians(ATresult.getBestTarget().getPitch()));
+
+          // Use this range as the measurement we give to the PID controller.
+          // -1.0 required to ensure positive PID controller effort _increases_ range
+          forwardSpeed = -forwardController.calculate(range, GOAL_RANGE_METERS);
+
+          // Also calculate angular power
+          // -1.0 required to ensure positive PID controller effort _increases_ yaw
+          rotationSpeed = -turnController.calculate(ATresult.getBestTarget().getYaw(), 0);
+      }else{
+        System.out.println("Could Not Find AT Target");
+          forwardSpeed = 0;
+          rotationSpeed = 0;
       }
-  } else {
-      // Manual Driver Mode
+      
+          // Manual Driver Mode
       forwardSpeed = -c_xbox1.getLeftY();
       rotationSpeed = turn;
 
   // Use our forward/turn speeds to control the drivetrain
   m_Drive.arcadeDrive(forwardSpeed, rotationSpeed); 
- 
-   //math to help eleminate stick drift
-
-  
-} 
-    if(c_xbox2.getBButton()) {
-    example1SolenoidPCM.set(true);
-   } else {
-    example1SolenoidPCM.set(false);
-   } 
-   
-    if(c_xbox2.getXButton()) {
-    example2SolenoidPCM.set(true);
-   } else {
-    example1SolenoidPCM.set(false);
-  };
-
-        
-        }
+}
 }
 }
 }
