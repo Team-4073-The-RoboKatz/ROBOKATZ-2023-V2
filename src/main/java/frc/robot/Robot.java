@@ -5,6 +5,7 @@
 package frc.robot;
 
 import edu.wpi.first.math.controller.PIDController;
+import edu.wpi.first.math.filter.SlewRateLimiter;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableEntry;
@@ -17,9 +18,13 @@ import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 import edu.wpi.first.wpilibj.motorcontrol.MotorControllerGroup;
+
+import com.ctre.phoenix.motorcontrol.ControlMode;
+import com.ctre.phoenix.motorcontrol.can.TalonSRX;
 import com.revrobotics.CANSparkMax;
 import com.revrobotics.CANSparkMax.IdleMode;
 import com.revrobotics.CANSparkMaxLowLevel.MotorType;
+
 import org.photonvision.PhotonCamera;
 import org.photonvision.PhotonUtils;
 import org.photonvision.common.hardware.VisionLEDMode;
@@ -38,33 +43,37 @@ public class Robot extends TimedRobot {
   private final SendableChooser<String> m_chooser = new SendableChooser<>();
 
   private final XboxController c_xbox1 = new XboxController(0);
+  private final XboxController c_xbox2 = new XboxController(1);
 
-  public CANSparkMax m_LFrontMotor;
-    public CANSparkMax m_LBackMotor;
+    public CANSparkMax m_LFrontMotor;
+    public CANSparkMax  m_LBackMotor;
     public CANSparkMax m_RFrontMotor;
-    public CANSparkMax m_RBackMotor; 
+    public CANSparkMax  m_RBackMotor; 
+    TalonSRX arm  = new TalonSRX(6);
+    TalonSRX claw = new TalonSRX(7);
   {
     m_LFrontMotor = new CANSparkMax(2, MotorType.kBrushless);
-    m_LBackMotor = new CANSparkMax(3, MotorType.kBrushless);
+    m_LBackMotor  = new CANSparkMax(3, MotorType.kBrushless);
     m_RFrontMotor = new CANSparkMax(4, MotorType.kBrushless);
-    m_RBackMotor = new CANSparkMax(5, MotorType.kBrushless);
+    m_RBackMotor  = new CANSparkMax(5, MotorType.kBrushless);
   }
-  MotorControllerGroup m_left = new MotorControllerGroup(m_LFrontMotor, m_LBackMotor);
+  MotorControllerGroup m_left  = new MotorControllerGroup(m_LFrontMotor, m_LBackMotor);
   MotorControllerGroup m_right = new MotorControllerGroup(m_RFrontMotor, m_RBackMotor);
-  double strait;
-  double turn;
-
+  double  strait;
+  double    turn;
+  boolean toggle;
+  SlewRateLimiter filter = new SlewRateLimiter(0.2); 
 
   NetworkTableInstance inst = NetworkTableInstance.getDefault();
   NetworkTable table = inst.getTable("cam1");
    
-  NetworkTableEntry rawBytes;
-  NetworkTableEntry hasTarget;
+  NetworkTableEntry      rawBytes;
+  NetworkTableEntry     hasTarget;
   NetworkTableEntry latencyMillis;
-  NetworkTableEntry targetpose;
-  NetworkTableEntry targetYaw;
+  NetworkTableEntry    targetpose;
+  NetworkTableEntry     targetYaw;
   NetworkTableEntry pipelineIndex;
-  NetworkTableEntry ledMode; 
+  NetworkTableEntry       ledMode; 
     
   private final DifferentialDrive m_robotDrive = new DifferentialDrive(m_left, m_right);
 {
@@ -79,18 +88,18 @@ public class Robot extends TimedRobot {
   final double CAMERA_PITCH_RADIANS = Units.degreesToRadians(0);
 
   // How far from the target we want to be
-  final double GOAL_RANGE_METERS = Units.feetToMeters(3);
+  final double GOAL_RANGE_METERS = Units.feetToMeters(1);
 
   // Change this to match the name of your camera
   PhotonCamera camera = new PhotonCamera("cam1");
 
   // PID constants should be tuned per robot
-  final double LINEAR_P = -0.01;
-  final double LINEAR_D = 0.0;
+  final double LINEAR_P = -0.02;
+  final double LINEAR_D = 0.01;
   PIDController forwardController = new PIDController(LINEAR_P, 0, LINEAR_D);
 
-  final double ANGULAR_P = -0.01;
-  final double ANGULAR_D = 0.0;
+  final double ANGULAR_P = -0.02;
+  final double ANGULAR_D = 0.01;
   PIDController turnController = new PIDController(ANGULAR_P, 0, ANGULAR_D);
 
   
@@ -151,27 +160,49 @@ public class Robot extends TimedRobot {
   /** This function is called periodically during operator control. */
   @Override
   public void teleopPeriodic() {
-    strait = -c_xbox1.getLeftY();
-    turn = c_xbox1.getLeftTriggerAxis() - c_xbox1.getRightTriggerAxis();
-    m_robotDrive.arcadeDrive(strait, turn);
+    double filteredrot;
+    double filterfow;
     double forwardSpeed;
     double rotationSpeed;
+    toggle = false; 
 
-    
 
+     if (c_xbox1.getXButtonPressed()) {
+      if (toggle) { 
+        SmartDashboard.putString("Lights", "Off");
+         // Current state is true so turn off
+         lightsoff();
+         toggle = false;
+      } else {
+        SmartDashboard.putString("Lights", "On");
+         // Current state is false so turn on
+         lightson();
+         toggle = true;
+      }
+      if (c_xbox1.getYButtonPressed()){
+        camera.setPipelineIndex(1);
+        System.out.println(camera.getPipelineIndex());
+      }
+      else{
+       camera.setPipelineIndex(0);
+       System.out.println(camera.getPipelineIndex());
+      }
+    }
     if (c_xbox1.getAButton()) {
+      camera.setPipelineIndex(0);
         // Vision-alignment mode
+        System.out.println("Finding RR Targets");
         // Query the latest result from PhotonVision
-        var result = camera.getLatestResult();
-
-        if (result.hasTargets()) {
+        var RRresult = camera.getLatestResult();
+        if (RRresult.hasTargets()) {
+          System.out.println("Reflective Target Found");
             // First calculate range
             double range =
                     PhotonUtils.calculateDistanceToTargetMeters(
                             CAMERA_HEIGHT_METERS,
                             TARGET_HEIGHT_METERS,
                             CAMERA_PITCH_RADIANS,
-                            Units.degreesToRadians(result.getBestTarget().getPitch()));
+                            Units.degreesToRadians(RRresult.getBestTarget().getPitch()));
 
             // Use this range as the measurement we give to the PID controller.
             // -1.0 required to ensure positive PID controller effort _increases_ range
@@ -179,23 +210,67 @@ public class Robot extends TimedRobot {
 
             // Also calculate angular power
             // -1.0 required to ensure positive PID controller effort _increases_ yaw
-            rotationSpeed = -turnController.calculate(result.getBestTarget().getYaw(), 0);
+            rotationSpeed = -turnController.calculate(RRresult.getBestTarget().getYaw(), 0);
         } else {
             // If we have no targets, stay still.
+            System.out.println("No RR Targets");
             forwardSpeed = 0;
             rotationSpeed = 0;
-        }
+            System.out.println("Finding April Targets");
+            camera.setPipelineIndex(1);
+        // Query the latest result from PhotonVision
+        var ATresult = camera.getLatestResult();
+        if (ATresult.hasTargets()) {
+          System.out.println("April Target Found");
+            // First calculate range
+            double range =
+                    PhotonUtils.calculateDistanceToTargetMeters(
+                            CAMERA_HEIGHT_METERS,
+                            TARGET_HEIGHT_METERS,
+                            CAMERA_PITCH_RADIANS,
+                            Units.degreesToRadians(ATresult.getBestTarget().getPitch()));
+
+            // Use this range as the measurement we give to the PID controller.
+            // -1.0 required to ensure positive PID controller effort _increases_ range
+            forwardSpeed = -forwardController.calculate(range, GOAL_RANGE_METERS);
+
+            // Also calculate angular power
+            // -1.0 required to ensure positive PID controller effort _increases_ yaw
+            rotationSpeed = -turnController.calculate(ATresult.getBestTarget().getYaw(), 0);
     } else {
         // Manual Driver Mode
+        
         forwardSpeed = -c_xbox1.getLeftY();
         rotationSpeed = c_xbox1.getLeftTriggerAxis() - c_xbox1.getRightTriggerAxis();
     }
-
     // Use our forward/turn speeds to control the drivetrain
-    m_robotDrive.arcadeDrive(forwardSpeed, rotationSpeed);
+    filteredrot = filter.calculate(rotationSpeed);
+    filterfow = filter.calculate(forwardSpeed);
+    m_robotDrive.arcadeDrive(filterfow, filteredrot);
+  }
+}
+
+
+    if(c_xbox2.getRightBumperPressed()){
+      arm.set(ControlMode.PercentOutput, .5);
+    }else{
+      arm.set(ControlMode.PercentOutput, 0);;}
+    if(c_xbox2.getLeftBumperPressed()){
+      arm.set(ControlMode.PercentOutput, -.5);
+    }else{
+      arm.set(ControlMode.PercentOutput, 0);
+    }
 }
     
- /** This function is called once when the robot is disabled. */
+ private void lightson() {
+  camera.setLED(VisionLEDMode.kOn);
+  }
+
+private void lightsoff() {
+  camera.setLED(VisionLEDMode.kOff);
+  }
+
+/** This function is called once when the robot is disabled. */
   @Override
   public void disabledInit() {}
 
